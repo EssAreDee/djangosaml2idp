@@ -56,9 +56,14 @@ class IdPHandlerViewMixin(object):
     def dispatch(self, request, *args, **kwargs):
         """ Construct IDP server with config from settings dict
         """
+        sp_metadata_list = SAMLSP.objects.all().values_list('metadata', flat=True)
+
         conf = IdPConfig()
-        conf.load(copy.deepcopy(settings.SAML_IDP_CONFIG))
+        idp_config = copy.deepcopy(settings.SAML_IDP_CONFIG)
+        idp_config['metadata']['inline'] = sp_metadata_list
+        conf.load(idp_config)
         self.IDP = Server(config=conf)
+
         return super(IdPHandlerViewMixin, self).dispatch(request, *args, **kwargs)
 
     def get_processor(self, sp_config):
