@@ -37,7 +37,15 @@ def sso_entry(request):
     """ Entrypoint view for SSO. Gathers the parameters from the HTTP request, stores them in the session
         and redirects the requester to the login_process view.
     """
-    passed_data = request.POST if request.method == 'POST' else request.GET
+    if request.method == 'POST':
+        passed_data = request.POST
+        binding = BINDING_HTTP_POST
+    else:
+        passed_data = request.GET
+        binding = BINDING_HTTP_REDIRECT
+
+    request.session['Binding'] = binding
+
     try:
         request.session['SAMLRequest'] = passed_data['SAMLRequest']
     except (KeyError, MultiValueDictKeyError) as e:
@@ -89,9 +97,11 @@ class LoginProcessView(IdPHandlerViewMixin, View):
         The login_required decorator ensures the user authenticates first on the IdP using 'normal' ways.
     """
     def get(self, request, *args, **kwargs):
+        binding = request.session.get('Binding', BINDING_HTTP_POST)
+
         # Parse incoming request
         try:
-            req_info = self.IDP.parse_authn_request(request.session['SAMLRequest'], BINDING_HTTP_POST)
+            req_info = self.IDP.parse_authn_request(request.session['SAMLRequest'], binding)
         except Exception as excp:
             return HttpResponseBadRequest(excp)
         # TODO this is taken from example, but no idea how this works or whats it does. Check SAML2 specification?
@@ -143,7 +153,7 @@ class LoginProcessView(IdPHandlerViewMixin, View):
         try:
             authn_resp = self.IDP.create_authn_response(
                 identity=identity, userid=request.user.username,
-                name_id=NameID(format=resp_args['name_id_policy'].format, sp_name_qualifier=destination, text=request.user.username),
+                name_id=NameID(format=resp_args['name_id_policy'].format, sp_name_qualifier=sp_entity_id, text=request.user.username),
                 authn=AUTHN_BROKER.get_authn_by_accr(req_authn_context),
                 sign_response=self.IDP.config.getattr("sign_response", "idp") or False,
                 sign_assertion=self.IDP.config.getattr("sign_assertion", "idp") or False,
